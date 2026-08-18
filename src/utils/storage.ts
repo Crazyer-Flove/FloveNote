@@ -186,6 +186,30 @@ export function deleteTagFromNotes(notes: Note[], tagToDelete: string): Note[] {
   });
 }
 
+/**
+ * Removes all tags from all notes across the workspace
+ */
+export function deleteAllTagsFromNotes(notes: Note[]): Note[] {
+  return notes.map((note) => {
+    if (!note.tags || note.tags.length === 0) return note;
+
+    let newContent = note.content;
+    for (const tag of note.tags) {
+      const regex = new RegExp(`(?<=^|\\s)#${escapeRegExp(tag)}(?=\\s|$|[.,!?;:])`, 'g');
+      newContent = newContent.replace(regex, '');
+    }
+    newContent = newContent.trim();
+    const updatedTags = extractTags(newContent);
+
+    return {
+      ...note,
+      content: newContent,
+      tags: updatedTags,
+      updatedAt: Date.now(),
+    };
+  });
+}
+
 function escapeRegExp(string: string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

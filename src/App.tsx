@@ -11,6 +11,7 @@ import {
   renameTagInNotes,
   mergeTagsInNotes,
   deleteTagFromNotes,
+  deleteAllTagsFromNotes,
 } from './utils/storage';
 import { extractTags, getIsoWeekString, getMonthString, exportNotesContent, downloadFile } from './utils/markdownUtils';
 import { SAMPLE_CASE_DOCUMENTS, convertCaseItemToNote, CaseDocumentItem } from './utils/caseDocuments';
@@ -18,6 +19,7 @@ import { Sidebar } from './components/Sidebar';
 import { TimelineFeed } from './components/TimelineFeed';
 import { NoteEditorModal } from './components/NoteEditorModal';
 import { TagManagerModal } from './components/TagManagerModal';
+import { TagCloudModal } from './components/TagCloudModal';
 import { BatchExportModal } from './components/BatchExportModal';
 import { ResourceManagerModal } from './components/ResourceManagerModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -60,6 +62,7 @@ export default function App() {
   const [focusedNote, setFocusedNote] = useState<Note | null>(null);
 
   const [isTagManagerOpen, setIsTagManagerOpen] = useState(false);
+  const [isTagCloudModalOpen, setIsTagCloudModalOpen] = useState(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
   const [exportingCardNote, setExportingCardNote] = useState<Note | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -558,6 +561,15 @@ export default function App() {
     addToast(`已从所有笔记中移除标签 #${tag}`, 'info');
   };
 
+  const handleDeleteAllTags = () => {
+    const updated = deleteAllTagsFromNotes(notes);
+    updateNotesWithHistory(updated);
+    if (filterState.selectedTag) {
+      setFilterState((prev) => ({ ...prev, selectedTag: null }));
+    }
+    addToast('已成功一键移除所有笔记中的全部标签！', 'info');
+  };
+
   // Backup Export & Import
   const handleRestoreNotes = (importedNotes: Note[]) => {
     updateNotesWithHistory(importedNotes);
@@ -636,6 +648,7 @@ export default function App() {
           setIsSettingsOpen(true);
         }}
         onOpenTagManager={() => setIsTagManagerOpen(true)}
+        onOpenTagCloud={() => setIsTagCloudModalOpen(true)}
         onOpenAnalyticsModal={() => setIsAnalyticsModalOpen(true)}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenResourceManager={() => setIsResourceManagerOpen(true)}
@@ -771,6 +784,19 @@ export default function App() {
         onRenameTag={handleRenameTag}
         onMergeTags={handleMergeTags}
         onDeleteTag={handleDeleteTag}
+        onDeleteAllTags={handleDeleteAllTags}
+        onOpenTagCloud={() => setIsTagCloudModalOpen(true)}
+      />
+
+      <TagCloudModal
+        isOpen={isTagCloudModalOpen}
+        onClose={() => setIsTagCloudModalOpen(false)}
+        tags={allTagInfos}
+        notes={notes}
+        activeTag={filterState.selectedTag}
+        onSelectTag={(tag) => setFilterState((prev) => ({ ...prev, selectedTag: tag }))}
+        onOpenTagManager={() => setIsTagManagerOpen(true)}
+        onShowToast={addToast}
       />
 
       <BatchExportModal
@@ -854,6 +880,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAnalytics={() => setIsAnalyticsModalOpen(true)}
         onOpenResourceManager={() => setIsResourceManagerOpen(true)}
+        onOpenTagCloud={() => setIsTagCloudModalOpen(true)}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenSponsorModal={() => setIsSponsorModalOpen(true)}
         onToggleTheme={toggleTheme}

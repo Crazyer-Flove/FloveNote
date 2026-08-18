@@ -1649,7 +1649,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-indigo-100 leading-relaxed">
-                  想要快速掌握所见即所得编辑、双链笔记关联 `[[标题]]`、`.src/` 本地图片存储与导出长图等核心黑科技？点击下方按钮开启 5 步交互导览！
+                  想要快速掌握 Typora 实时渲染与 KaTeX 公式、双链网状知识库 `[[标题]]`、动态标签云、本地电脑物理目录绑定、7 色卡片导出与全局命令面板等核心黑科技？点击下方按钮开启 8 步交互导览！
                 </p>
                 <div className="flex items-center gap-2 pt-1">
                   <button
@@ -1658,7 +1658,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     className="px-4 py-2 bg-white text-indigo-700 hover:bg-indigo-50 font-bold rounded-xl text-xs flex items-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
                   >
                     <Play className="w-4 h-4 fill-current" />
-                    <span>启动分步交互教程 Tour</span>
+                    <span>启动 8 步交互导览 Tour</span>
                   </button>
                   {onImportAllCaseDocuments && (
                     <button
@@ -1789,14 +1789,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* Quick Feature Cards Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/80 space-y-1.5">
                   <p className="font-bold text-slate-800 dark:text-zinc-100 text-xs flex items-center gap-1.5">
                     <span className="p-1 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">✍️</span>
-                    <span>Typora 所见即所得</span>
+                    <span>Typora 渲染 & KaTeX 公式</span>
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                    支持实时 Markdown 格式美化。直接输入 `#` 标题、`*斜体*`、`**加粗**` 与 `- [ ]` 快捷列表。
+                    实时 Markdown 美化，支持 `$E=mc^2$` 与积分矩阵公式、代码高亮和待办清单。
                   </p>
                 </div>
 
@@ -1806,27 +1806,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span>双向链接 (`[[标题]]`)</span>
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                    用双括号创建卡片级关联与跳转。让不同的想法彼此碰撞交织，构建个人第二大脑。
+                    双括号原子关联，卡片底部智能呈现反向引用出处，构建个人第二大脑。
                   </p>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/80 space-y-1.5">
                   <p className="font-bold text-slate-800 dark:text-zinc-100 text-xs flex items-center gap-1.5">
-                    <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">🏷️</span>
-                    <span>智能标签与拖拽</span>
+                    <span className="p-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">☁️</span>
+                    <span>动态标签云 & 管理</span>
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                    正文中输入 `#标签` 自动提取。鼠标长按笔记卡片可直接拖拽放置到左侧标签分类。
+                    正文 `#标签` 自动归类，字号动态映射热度，支持拖拽打标与一键合并/清空。
                   </p>
                 </div>
 
                 <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/80 space-y-1.5">
                   <p className="font-bold text-slate-800 dark:text-zinc-100 text-xs flex items-center gap-1.5">
                     <span className="p-1 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400">📁</span>
-                    <span>`.src/` 本地图片库</span>
+                    <span>本地电脑工作区绑定</span>
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
-                    本地图片统一保存在 `.src/` 相对路径下，兼容 Obsidian 与 Typora 本地文件流转。
+                    直连电脑硬盘目录，Notes/`.src`/Backups 三层映射，与 Obsidian 100% 互通。
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/80 space-y-1.5">
+                  <p className="font-bold text-slate-800 dark:text-zinc-100 text-xs flex items-center gap-1.5">
+                    <span className="p-1 rounded-lg bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400">🎨</span>
+                    <span>7 色长图 & 矢量 PDF</span>
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                    一键生成高赞社交卡片长图复制到微信/小红书，或导出高清免打印 PDF。
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-200/80 dark:border-zinc-700/80 space-y-1.5">
+                  <p className="font-bold text-slate-800 dark:text-zinc-100 text-xs flex items-center gap-1.5">
+                    <span className="p-1 rounded-lg bg-cyan-100 dark:bg-cyan-950 text-cyan-600 dark:text-cyan-400">⚡</span>
+                    <span>全局命令面板 (Cmd+K)</span>
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                    秒级呼出命令搜索、全屏专注模式、写作打卡热力图与毫秒级历史时光机。
                   </p>
                 </div>
               </div>

@@ -9,10 +9,15 @@ import {
   FileText,
   Link,
   Hash,
+  Cloud,
   FolderKanban,
   Download,
   HelpCircle,
   Play,
+  Command,
+  Flame,
+  HardDrive,
+  Check,
 } from 'lucide-react';
 
 interface OnboardingHelpModalProps {
@@ -32,18 +37,18 @@ export const OnboardingHelpModal: React.FC<OnboardingHelpModalProps> = ({
 
   const steps = [
     {
-      title: 'Typora 风格所见即所得体验',
-      badge: '第一步：极致书写',
+      title: 'Typora 风格所见即所得与 KaTeX 公式',
+      badge: '第一步：极致输入',
       icon: <FileText className="w-6 h-6 text-indigo-500" />,
       color: 'from-indigo-500 to-blue-500',
       description:
-        ' FloveNote 支持类似 Typora 的极简 Markdown 实时渲染。输入 # 标题、*斜体*、**粗体** 或 - 任务列表，即可自动美化展现。',
+        'FloveNote 支持极简 Markdown 实时渲染。输入 # 标题、*斜体*、**粗体**、- [ ] 交互式待办任务列表，以及 $E=mc^2$ 与多行矩阵数学公式，即可即时美化呈现。',
       highlights: [
-        '按回车自动创建下一块段落/列表',
-        '支持快捷键 Ctrl+B/I/K 快速设置格式',
-        '全屏专注模式与沉浸式沉淀思考',
+        '即时渲染标题、多语言代码高亮与 KaTeX 数学公式',
+        '交互式待办任务项，点击复选框即时更新正文状态',
+        '支持 Ctrl+B/I/Z/Y 等经典编辑器快捷键',
       ],
-      codeSample: '# 欢迎体验 FloveNote\n- [x] 极简界面\n- [ ] 知识链条',
+      codeSample: '# 欢迎体验 FloveNote\n- [x] 极简时间轴记录\n$$ \\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi} $$',
     },
     {
       title: '双向链接网状知识库 (`[[双链]]`)',
@@ -51,69 +56,97 @@ export const OnboardingHelpModal: React.FC<OnboardingHelpModalProps> = ({
       icon: <Link className="w-6 h-6 text-violet-500" />,
       color: 'from-violet-500 to-purple-500',
       description:
-        '在编辑器或快速发布框中输入 [[笔记标题]] 即可创建反向链接卡片。点击高亮的双链文本可瞬间穿梭至目标笔记！',
+        '在编辑器或顶部快捷发布框中输入 [[笔记标题]] 即可创建原子卡片级双向链接。卡片底部自动计算出所有反向引用出处，点击链接瞬间高亮穿梭！',
       highlights: [
-        '自动联想已有的笔记标题',
-        '卡片底座展示被引用的双链出处',
-        '双链图谱助力构建个人数字花园',
+        '自动联想补全已有笔记标题与别名',
+        '卡片底座智能解析反向链接 (Backlinks) 与引用来源',
+        '践行卢曼卡片盒笔记法，彻底告别孤立知识点',
       ],
-      codeSample: '在思考中关联 [[项目想法]] 与 [[阅读心得]]',
+      codeSample: '在思考中交织 [[架构设计思路]] 与 [[项目研发周报]]',
     },
     {
-      title: '智能 `#标签` 系统与拖拽打标签',
-      badge: '第三步：灵活归类',
-      icon: <Hash className="w-6 h-6 text-emerald-500" />,
+      title: '智能 `#标签`、标签云与批量管理',
+      badge: '第三步：立体归类',
+      icon: <Cloud className="w-6 h-6 text-emerald-500" />,
       color: 'from-emerald-500 to-teal-500',
       description:
-        '直接在正文中输入 #标签名，FloveNote 会自动提取并分类到左侧边栏。你还可以把笔记卡片直接拖拽到侧边栏标签上完成一秒打标签！',
+        '正文中键入 #标签名 自动提取分类。支持可视化「标签云全景图」按使用频率自适应缩放字号，支持侧边栏拖拽打标、标签一键重命名、合并与全量清空。',
       highlights: [
-        '正文内自动高亮点击 #标签',
-        '支持卡片鼠标拖拽至左侧标签直接打标',
-        '一键合并与清理废弃标签',
+        '正文内自动提取 #标签，支持卡片鼠标拖拽至左侧标签直接打标',
+        '动态标签云 (Tag Cloud)：字号直观映射笔记关联热度，内置多套配色',
+        '标签管理面板支持一键重命名、多标签合并与一键安全清空',
       ],
-      codeSample: '写下今天的状态 #工作日志 #闪念灵感',
+      codeSample: '记录今天的闪念与复盘 #工作/周报 #深度思考 #架构',
     },
     {
-      title: '本地相对路径 `.src/` 图片库',
-      badge: '第四步：资源管家',
-      icon: <FolderKanban className="w-6 h-6 text-amber-500" />,
+      title: '本地电脑工作区与原生文件夹目录绑定',
+      badge: '第四步：原生存储',
+      icon: <HardDrive className="w-6 h-6 text-amber-500" />,
       color: 'from-amber-500 to-orange-500',
       description:
-        '插入的本地图片会自动转换为相对路径 `.src/img_xxxx.png` 存储。即使离线或将笔记移动到 Obsidian / Logseq / Typora 中也能保持图片路径完整！',
+        '通过浏览器原生 File System Access API 直连电脑任意物理目录（如 ~/Documents/FloveNote），自动映射 Notes 正文、.src/ 媒体资源与 Backups 快照目录。',
       highlights: [
-        '支持 Ctrl+V 剪贴板截图直接粘贴',
-        '资源管理器汇总所有 `.src/` 嵌入资源',
-        '双击图片可无限放大与顺时针旋转',
+        '直连本地物理文件夹，一键即时同步写入磁盘与扫描导入',
+        '图片媒体自动存储至 .src/ 相对路径，与 Obsidian / Typora 100% 互通',
+        '支持创建与切换多工作区，每个工作区独立隔离物理路径',
       ],
-      codeSample: '![思维导图](.src/img_20260811_idea.png)',
+      codeSample: 'Notes/ (正文 Markdown) + .src/ (本地图片) + Backups/ (快照)',
     },
     {
-      title: '极简长图导出与全量备份',
-      badge: '第五步：沉淀分享',
+      title: '7 色社交卡片长图与免打印矢量 PDF 导出',
+      badge: '第五步：高赞分享',
       icon: <Download className="w-6 h-6 text-rose-500" />,
       color: 'from-rose-500 to-pink-500',
       description:
-        '满意你的文字后，可以一键将其生成优雅排版的 PNG 高清长图分享至微信/小红书/微博，也可以随时导出 Markdown 与 JSON 全量数据备份。',
+        '提供极简流光、日落霞光、复古羊皮纸、深邃夜空等 7 款精美调色盘，一键生成像素级高清社交长图复制到剪贴板，或直接导出高质量分页矢量 PDF。',
       highlights: [
-        '一键转换为精致社交长图',
-        '自动适配日间/夜间暗黑主题导出',
-        '数据纯本地存储，绝不泄露隐私',
+        '7 款设计师精心调优配色方案与高保真矢量排版',
+        '一键复制卡片图片至剪贴板，秒发微信 / 小红书 / 即刻 / Slack',
+        '直接导出免浏览器打印弹窗的高清矢量分页 PDF',
       ],
-      codeSample: '导出长图 · Markdown · JSON 格式备份',
+      codeSample: '一键生成高赞卡片长图 · 矢量 PDF · Markdown ZIP 全量备份',
     },
     {
-      title: '实战案例文档库与最佳范式',
-      badge: '第六步：实战进阶',
+      title: '全局命令面板 (`Cmd+K`) 与效率快捷键',
+      badge: '第六步：极速驾驭',
+      icon: <Command className="w-6 h-6 text-cyan-500" />,
+      color: 'from-cyan-500 to-blue-600',
+      description:
+        '按下 Ctrl+K (Windows) 或 Cmd+K (Mac) 即可唤起万能命令面板，支持拼音模糊搜索笔记、视图切换、触发全屏专注模式、执行标签云与系统偏好配置。',
+      highlights: [
+        'Ctrl+K / Cmd+K：秒级呼出全局命令面板与全文模糊检索',
+        'Ctrl+N：快速新建笔记；Ctrl+Enter：保存并即时发布',
+        'Ctrl+Z / Ctrl+Y：毫秒级历史时光机增量回退与重做',
+      ],
+      codeSample: 'Cmd+K 唤起搜索面板 · 键盘上下键极速导航 · Enter 立即执行',
+    },
+    {
+      title: '沉浸专注写作与打卡贡献热力图',
+      badge: '第七步：习惯养成',
+      icon: <Flame className="w-6 h-6 text-orange-500" />,
+      color: 'from-orange-500 to-amber-500',
+      description:
+        '提供无干扰全屏专注模式，配合 GitHub 风格的全年写作打卡热力图，精准追踪每日记录字数、活跃天数与连续创作打卡，让持续思考看得见。',
+      highlights: [
+        '全屏 Focus Mode 纯净无干扰打字机视野',
+        'GitHub 风格写作热力图，直观呈现年度写作活跃度',
+        '支持点击热力图具体日期卡片，一秒定位当天所有笔记',
+      ],
+      codeSample: '今日已完成 1,280 字 · 连续打卡 14 天 · 保持思考的心流状态',
+    },
+    {
+      title: '实战案例文档库与零门槛导入',
+      badge: '第八步：进阶实践',
       icon: <BookOpen className="w-6 h-6 text-indigo-500" />,
       color: 'from-indigo-500 to-violet-600',
       description:
-        '在系统设置中的「帮助与新手引导」内置了 4 篇精选实战案例文档，包含深度 Markdown 排版、LaTeX 公式、敏捷周报与卡片盒双链实践，支持一键导入与参考！',
+        '系统内置 4 篇高水准实战案例文档，覆盖 Markdown 排版全景、KaTeX 公式手册、敏捷研发周报与个人卡片盒第二大脑，随时供您参考或一键导入个人笔记库！',
       highlights: [
-        '内置 4 套真实场景实战示范文档',
-        '支持 Markdown 源码实时预览与复制',
-        '一键导入到个人笔记工作区',
+        '内置 4 套专业场景实战示范文档，支持实时预览与源码复制',
+        '一键导入到当前工作区，零冗余干净体验与丰富示范兼备',
+        '随时在「系统设置 -> 帮助与新手引导」中重温与查阅',
       ],
-      codeSample: '系统设置 -> 帮助与新手引导 -> 实战案例文档库',
+      codeSample: '系统设置 -> 帮助与新手引导 -> 实战案例文档库 -> 一键导入',
     },
   ];
 
@@ -123,7 +156,7 @@ export const OnboardingHelpModal: React.FC<OnboardingHelpModalProps> = ({
     if (currentStep < steps.length - 1) {
       setCurrentStep((prev) => prev + 1);
     } else {
-      if (onShowToast) onShowToast('恭喜完成新手学习！开启高效笔记之旅吧 ✨', 'success');
+      if (onShowToast) onShowToast('恭喜完成新手导览！开启您的高效笔记与知识沉淀之旅吧 ✨', 'success');
       onClose();
     }
   };
@@ -150,7 +183,7 @@ export const OnboardingHelpModal: React.FC<OnboardingHelpModalProps> = ({
                   {currentStep + 1} / {steps.length}
                 </span>
               </h3>
-              <p className="text-xs text-slate-500 dark:text-zinc-400">掌握 FloveNote 核心效率技巧</p>
+              <p className="text-xs text-slate-500 dark:text-zinc-400">掌握 FloveNote 核心效率黑科技</p>
             </div>
           </div>
           <button

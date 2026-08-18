@@ -23,6 +23,7 @@ import {
   Filter,
   Undo2,
   Redo2,
+  Cloud,
 } from 'lucide-react';
 import { Note, ViewMode, FilterState, ThemeMode } from '../types';
 
@@ -39,6 +40,7 @@ export interface CommandPaletteModalProps {
   onOpenSettings: () => void;
   onOpenAnalytics: () => void;
   onOpenResourceManager: () => void;
+  onOpenTagCloud?: () => void;
   onOpenExportModal: () => void;
   onOpenSponsorModal: () => void;
   onToggleTheme: () => void;
@@ -72,6 +74,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   onOpenSettings,
   onOpenAnalytics,
   onOpenResourceManager,
+  onOpenTagCloud,
   onOpenExportModal,
   onOpenSponsorModal,
   onToggleTheme,
@@ -186,6 +189,17 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
         icon: <BarChart2 className="w-4 h-4 text-violet-500" />,
         action: () => {
           onOpenAnalytics();
+        },
+      },
+      {
+        id: 'cmd-view-tag-cloud',
+        group: 'views',
+        groupName: '视图切换',
+        title: '打开：标签云全景图',
+        subtitle: '通过字号和色彩展示标签热度与关联笔记',
+        icon: <Cloud className="w-4 h-4 text-indigo-500" />,
+        action: () => {
+          if (onOpenTagCloud) onOpenTagCloud();
         },
       },
       {
