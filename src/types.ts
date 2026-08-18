@@ -7,7 +7,11 @@ export interface NoteHistory {
 export interface Workspace {
   id: string;
   name: string;
-  path: string;
+  path: string; // Root workspace folder path
+  notesPath?: string; // Sub-directory for Markdown notes
+  mediaPath?: string; // Sub-directory for media / .src assets
+  backupPath?: string; // Sub-directory for auto backups and snapshots
+  localFolderName?: string; // Directory name if picked via native file system picker
   description?: string;
   createdAt: number;
 }

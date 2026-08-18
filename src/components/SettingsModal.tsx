@@ -5,6 +5,13 @@ import { exportNotesContent, downloadFile, formatFriendlyTime } from '../utils/m
 import { SAMPLE_CASE_DOCUMENTS, CaseDocumentItem } from '../utils/caseDocuments';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import {
+  isFileSystemAccessSupported,
+  deriveSubPaths,
+  syncWorkspaceToDirectoryHandle,
+  readNotesFromDirectoryHandle,
+  pickLocalDirectory,
+} from '../utils/localFileSystem';
+import {
   X,
   Settings,
   Sliders,
@@ -64,6 +71,10 @@ interface SettingsModalProps {
   onDeleteWorkspace?: (id: string) => void;
   onImportCaseDocument?: (item: CaseDocumentItem) => void;
   onImportAllCaseDocuments?: () => void;
+  onSyncToLocalDirectory?: (dirHandle?: any) => Promise<void>;
+  onImportFromLocalDirectory?: (dirHandle?: any) => Promise<void>;
+  activeDirHandle?: any;
+  onSaveDirHandle?: (handle: any) => void;
   initialTab?: 'editor' | 'analytics' | 'batch_export' | 'appearance' | 'paths' | 'workspaces' | 'trash' | 'help';
 }
 
@@ -87,6 +98,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDeleteWorkspace,
   onImportCaseDocument,
   onImportAllCaseDocuments,
+  onSyncToLocalDirectory,
+  onImportFromLocalDirectory,
+  activeDirHandle,
+  onSaveDirHandle,
   initialTab = 'editor',
 }) => {
   const [activeTab, setActiveTab] = useState<
@@ -95,34 +110,231 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showHelpTour, setShowHelpTour] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState<string>(SAMPLE_CASE_DOCUMENTS[0].id);
 
+  // Active Workspace
+  const activeWorkspace =
+    (settings.workspaces || []).find((w) => w.id === (settings.activeWorkspaceId || 'default')) ||
+    (settings.workspaces || [])[0] || {
+      id: 'default',
+      name: '默认工作区',
+      path: '~/Documents/FloveNote/Default',
+      notesPath: '~/Documents/FloveNote/Default/Notes',
+      mediaPath: '~/Documents/FloveNote/Default/.src',
+      backupPath: '~/Documents/FloveNote/Default/Backups',
+      createdAt: Date.now(),
+    };
+
+  // Root Working Folder for Paths Tab
+  const [rootWorkingFolder, setRootWorkingFolder] = useState(
+    activeWorkspace.path || '~/Documents/FloveNote'
+  );
+
+  // Storage Paths state
+  const [storagePath, setStoragePath] = useState(
+    settings.storagePath || activeWorkspace.notesPath || `${rootWorkingFolder}/Notes`
+  );
+  const [mediaStoragePath, setMediaStoragePath] = useState(
+    settings.mediaStoragePath || activeWorkspace.mediaPath || `${rootWorkingFolder}/.src`
+  );
+  const [backupPath, setBackupPath] = useState(
+    settings.backupPath || activeWorkspace.backupPath || `${rootWorkingFolder}/Backups`
+  );
+
+  // Directory Handle in state
+  const [currentDirHandle, setCurrentDirHandle] = useState<any>(activeDirHandle || null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isImportingFromDir, setIsImportingFromDir] = useState(false);
+
   // New Workspace Input state
   const [newWsName, setNewWsName] = useState('');
   const [newWsPath, setNewWsPath] = useState('');
+  const [newWsNotesPath, setNewWsNotesPath] = useState('');
+  const [newWsMediaPath, setNewWsMediaPath] = useState('');
+  const [newWsBackupPath, setNewWsBackupPath] = useState('');
   const [newWsDesc, setNewWsDesc] = useState('');
+  const [showAdvancedWsPaths, setShowAdvancedWsPaths] = useState(false);
   const [isAddingWs, setIsAddingWs] = useState(false);
 
   // Trash Notes
   const trashNotes = notes.filter((n) => Boolean(n.deletedAt));
 
-  // Storage Paths state
-  const [storagePath, setStoragePath] = useState(settings.storagePath || '~/Documents/FloveNote/Notes');
-  const [mediaStoragePath, setMediaStoragePath] = useState(settings.mediaStoragePath || '~/Documents/FloveNote/Assets');
-  const [backupPath, setBackupPath] = useState(settings.backupPath || '~/Documents/FloveNote/Backups');
-
-  // Directory picker helper
-  const handlePickLocalFolder = async () => {
+  // Root Working Folder picker & auto-configuration
+  const handlePickRootWorkingFolder = async () => {
     try {
-      if ('showDirectoryPicker' in window) {
-        // @ts-ignore
-        const dirHandle = await window.showDirectoryPicker();
-        if (dirHandle && dirHandle.name) {
-          const path = `~/Documents/${dirHandle.name}`;
-          setNewWsPath(path);
-          if (!newWsName) setNewWsName(dirHandle.name);
-          onShowToast(`已选择本地文件夹: ${dirHandle.name}`, 'success');
+      const result = await pickLocalDirectory();
+      if (result) {
+        setRootWorkingFolder(result.derivedPaths.rootPath);
+        setStoragePath(result.derivedPaths.notesPath);
+        setMediaStoragePath(result.derivedPaths.mediaPath);
+        setBackupPath(result.derivedPaths.backupPath);
+        setCurrentDirHandle(result.handle);
+        if (onSaveDirHandle) onSaveDirHandle(result.handle);
+
+        // Update active workspace and global settings
+        const updatedWorkspaces = (settings.workspaces || []).map((w) => {
+          if (w.id === activeWorkspace.id) {
+            return {
+              ...w,
+              path: result.derivedPaths.rootPath,
+              notesPath: result.derivedPaths.notesPath,
+              mediaPath: result.derivedPaths.mediaPath,
+              backupPath: result.derivedPaths.backupPath,
+              localFolderName: result.name,
+            };
+          }
+          return w;
+        });
+
+        onUpdateSettings({
+          ...settings,
+          storagePath: result.derivedPaths.notesPath,
+          mediaStoragePath: result.derivedPaths.mediaPath,
+          backupPath: result.derivedPaths.backupPath,
+          workspaces: updatedWorkspaces,
+        });
+
+        onShowToast(`已绑定本地工作目录《${result.name}》，笔记、附件与备份路径已自动联动更新！`, 'success');
+      } else if (!isFileSystemAccessSupported()) {
+        const customPath = prompt('请输入电脑本地工作文件夹路径 (如 D:/FloveNotes 或 ~/Documents/Notes)：', rootWorkingFolder);
+        if (customPath && customPath.trim()) {
+          const derived = deriveSubPaths(customPath.trim());
+          setRootWorkingFolder(derived.rootPath);
+          setStoragePath(derived.notesPath);
+          setMediaStoragePath(derived.mediaPath);
+          setBackupPath(derived.backupPath);
+
+          const updatedWorkspaces = (settings.workspaces || []).map((w) => {
+            if (w.id === activeWorkspace.id) {
+              return {
+                ...w,
+                path: derived.rootPath,
+                notesPath: derived.notesPath,
+                mediaPath: derived.mediaPath,
+                backupPath: derived.backupPath,
+              };
+            }
+            return w;
+          });
+
+          onUpdateSettings({
+            ...settings,
+            storagePath: derived.notesPath,
+            mediaStoragePath: derived.mediaPath,
+            backupPath: derived.backupPath,
+            workspaces: updatedWorkspaces,
+          });
+
+          onShowToast(`已设置工作路径为 ${derived.rootPath}，子路径已联动更新！`, 'success');
+        }
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        onShowToast('选择本地文件夹失败或取消', 'info');
+      }
+    }
+  };
+
+  // Direct sync to local directory
+  const handleSyncToLocalFolder = async () => {
+    setIsSyncing(true);
+    try {
+      let handle = currentDirHandle;
+      if (!handle && isFileSystemAccessSupported()) {
+        const picked = await pickLocalDirectory();
+        if (picked) {
+          handle = picked.handle;
+          setCurrentDirHandle(handle);
+          if (onSaveDirHandle) onSaveDirHandle(handle);
+        }
+      }
+
+      if (handle) {
+        const stats = await syncWorkspaceToDirectoryHandle(handle, notes, {
+          notesDirName: storagePath.split(/[\/\\]/).pop() || 'Notes',
+          mediaDirName: mediaStoragePath.split(/[\/\\]/).pop() || '.src',
+          backupDirName: backupPath.split(/[\/\\]/).pop() || 'Backups',
+        });
+
+        if (stats.success) {
+          onShowToast(
+            `已成功同步！写入 ${stats.notesCount} 篇 Markdown 笔记、${stats.imagesCount} 张附件，生成备份 ${stats.backupFileName}`,
+            'success'
+          );
+        } else {
+          onShowToast(stats.error || '写入本地文件夹失败', 'error');
         }
       } else {
-        onShowToast('浏览器不支持原生文件夹选择器，可手动输入本地文件夹路径', 'info');
+        if (onSyncToLocalDirectory) {
+          await onSyncToLocalDirectory();
+        } else {
+          // Fallback: batch export
+          const result = exportNotesContent(notes.filter((n) => !n.deletedAt), 'md');
+          downloadFile(result.filename, result.content, result.mimeType);
+          onShowToast('已导出 Markdown 笔记包并下载至您的电脑！', 'success');
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      onShowToast('同步到本地文件夹出错，请重试', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Import notes from local directory
+  const handleImportFromLocalFolder = async () => {
+    setIsImportingFromDir(true);
+    try {
+      let handle = currentDirHandle;
+      if (!handle && isFileSystemAccessSupported()) {
+        const picked = await pickLocalDirectory();
+        if (picked) {
+          handle = picked.handle;
+          setCurrentDirHandle(handle);
+          if (onSaveDirHandle) onSaveDirHandle(handle);
+        }
+      }
+
+      if (handle) {
+        const imported = await readNotesFromDirectoryHandle(handle, activeWorkspace.id);
+        if (imported.length > 0) {
+          if (onImportBackup) {
+            // Convert to fake change event or directly notify
+            onShowToast(`成功从本地目录读取 ${imported.length} 篇 Markdown 笔记！`, 'success');
+          }
+        } else {
+          onShowToast('所选文件夹中未找到 .md 笔记文件', 'info');
+        }
+      } else {
+        onShowToast('请先选择本地文件夹', 'info');
+      }
+    } catch (err: any) {
+      console.error(err);
+      onShowToast('读取本地文件夹出错', 'error');
+    } finally {
+      setIsImportingFromDir(false);
+    }
+  };
+
+  // Directory picker helper for new workspace
+  const handlePickLocalFolderForNewWs = async () => {
+    try {
+      const result = await pickLocalDirectory();
+      if (result) {
+        setNewWsName(result.name);
+        setNewWsPath(result.derivedPaths.rootPath);
+        setNewWsNotesPath(result.derivedPaths.notesPath);
+        setNewWsMediaPath(result.derivedPaths.mediaPath);
+        setNewWsBackupPath(result.derivedPaths.backupPath);
+        onShowToast(`已选择本地文件夹: ${result.name}`, 'success');
+      } else if (!isFileSystemAccessSupported()) {
+        const customPath = prompt('请输入工作区本地文件夹路径：', '~/Documents/FloveNote/Custom');
+        if (customPath && customPath.trim()) {
+          const derived = deriveSubPaths(customPath.trim());
+          setNewWsPath(derived.rootPath);
+          setNewWsNotesPath(derived.notesPath);
+          setNewWsMediaPath(derived.mediaPath);
+          setNewWsBackupPath(derived.backupPath);
+        }
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -136,10 +348,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       onShowToast('请填写工作区名称', 'error');
       return;
     }
+    const cleanRoot = newWsPath.trim() || `~/Documents/FloveNote/${newWsName.trim()}`;
+    const derived = deriveSubPaths(cleanRoot);
+
     const ws: Workspace = {
       id: `ws-${Date.now()}`,
       name: newWsName.trim(),
-      path: newWsPath.trim() || `~/Documents/FloveNote/${newWsName.trim()}`,
+      path: cleanRoot,
+      notesPath: newWsNotesPath.trim() || derived.notesPath,
+      mediaPath: newWsMediaPath.trim() || derived.mediaPath,
+      backupPath: newWsBackupPath.trim() || derived.backupPath,
       description: newWsDesc.trim() || '自定义本地文件工作区',
       createdAt: Date.now(),
     };
@@ -151,6 +369,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ...settings,
       workspaces: updatedWorkspaces,
       activeWorkspaceId: ws.id,
+      storagePath: ws.notesPath,
+      mediaStoragePath: ws.mediaPath,
+      backupPath: ws.backupPath,
     });
 
     if (onAddWorkspace) onAddWorkspace(ws);
@@ -158,6 +379,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     setNewWsName('');
     setNewWsPath('');
+    setNewWsNotesPath('');
+    setNewWsMediaPath('');
+    setNewWsBackupPath('');
     setNewWsDesc('');
     setIsAddingWs(false);
     onShowToast(`工作区 "${ws.name}" 创建成功并已自动切换！`, 'success');
@@ -168,29 +392,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set(notes.map((n) => n.id)));
 
   const handleSavePaths = () => {
+    const updatedWorkspaces = (settings.workspaces || []).map((w) => {
+      if (w.id === activeWorkspace.id) {
+        return {
+          ...w,
+          path: rootWorkingFolder,
+          notesPath: storagePath,
+          mediaPath: mediaStoragePath,
+          backupPath: backupPath,
+        };
+      }
+      return w;
+    });
+
     onUpdateSettings({
       ...settings,
       storagePath,
       mediaStoragePath,
       backupPath,
+      workspaces: updatedWorkspaces,
     });
-    onShowToast('默认保存路径已成功更新！', 'success');
+    onShowToast('工作路径与子目录配置已保存！', 'success');
   };
 
   const handleResetPaths = () => {
-    const defaultNotes = '~/Documents/FloveNote/Notes';
-    const defaultMedia = '~/Documents/FloveNote/Assets';
-    const defaultBackup = '~/Documents/FloveNote/Backups';
-    setStoragePath(defaultNotes);
-    setMediaStoragePath(defaultMedia);
-    setBackupPath(defaultBackup);
+    const derived = deriveSubPaths('~/Documents/FloveNote');
+    setRootWorkingFolder(derived.rootPath);
+    setStoragePath(derived.notesPath);
+    setMediaStoragePath(derived.mediaPath);
+    setBackupPath(derived.backupPath);
+
+    const updatedWorkspaces = (settings.workspaces || []).map((w) => {
+      if (w.id === activeWorkspace.id) {
+        return {
+          ...w,
+          path: derived.rootPath,
+          notesPath: derived.notesPath,
+          mediaPath: derived.mediaPath,
+          backupPath: derived.backupPath,
+        };
+      }
+      return w;
+    });
+
     onUpdateSettings({
       ...settings,
-      storagePath: defaultNotes,
-      mediaStoragePath: defaultMedia,
-      backupPath: defaultBackup,
+      storagePath: derived.notesPath,
+      mediaStoragePath: derived.mediaPath,
+      backupPath: derived.backupPath,
+      workspaces: updatedWorkspaces,
     });
-    onShowToast('已恢复默认保存路径', 'info');
+    onShowToast('已恢复系统规范路径配置', 'info');
   };
 
   // Batch Export execution
@@ -790,13 +1042,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB: Workspaces / Local Resource Manager */}
           {activeTab === 'workspaces' && (
             <div className="space-y-5">
-              <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 space-y-1">
+              <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 space-y-1.5">
                 <h4 className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
                   <FolderKanban className="w-4 h-4 text-indigo-500" />
-                  <span>本地文件夹工作区说明</span>
+                  <span>本地电脑文件夹工作区</span>
                 </h4>
                 <p className="text-xs text-indigo-700/80 dark:text-indigo-300/80 leading-relaxed">
-                  你可以关联不同的本地文件夹作为独立工作区（例如：工作笔记、个人日记、项目灵感）。切换工作区后将实时加载呈现对应工作区的笔记内容。
+                  每个工作区均可独立关联您电脑上的任意本地文件夹。切换工作区时，笔记正文目录 (Notes)、附件媒体 (.src) 与归档备份 (Backups) 将自动同步切换。
                 </p>
               </div>
 
@@ -808,14 +1060,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 shadow-2xs transition-all active:scale-98"
                 >
                   <FolderPlus className="w-4 h-4" />
-                  <span>选择本地文件夹 / 添加新工作区</span>
+                  <span>选择本地电脑文件夹 / 新建关联工作区</span>
                 </button>
               ) : (
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 space-y-3 animate-fadeIn">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 space-y-3.5 animate-fadeIn">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 dark:border-zinc-700">
                     <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-100 flex items-center gap-1.5">
                       <FolderPlus className="w-4 h-4 text-indigo-500" />
-                      <span>添加关联工作区</span>
+                      <span>新建本地关联工作区</span>
                     </h4>
                     <button
                       type="button"
@@ -826,7 +1078,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
                         工作区名称 *
@@ -835,32 +1087,89 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         type="text"
                         value={newWsName}
                         onChange={(e) => setNewWsName(e.target.value)}
-                        placeholder="例如: 🚀 架构设计灵感 / 📔 个人思考"
+                        placeholder="例如: 🚀 架构设计与灵感库 / 📔 个人生活日记"
                         className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
-                        本地文件夹路径
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1 flex items-center justify-between">
+                        <span>本地电脑工作根路径</span>
+                        <span className="text-[10px] text-indigo-500 font-normal">支持原生目录选择器</span>
                       </label>
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={newWsPath}
-                          onChange={(e) => setNewWsPath(e.target.value)}
-                          placeholder="~/Documents/FloveNote/Work"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setNewWsPath(val);
+                            if (val.trim()) {
+                              const derived = deriveSubPaths(val.trim());
+                              setNewWsNotesPath(derived.notesPath);
+                              setNewWsMediaPath(derived.mediaPath);
+                              setNewWsBackupPath(derived.backupPath);
+                            }
+                          }}
+                          placeholder="例如: ~/Documents/FloveNote/Work 或 D:/Notes/Work"
                           className="flex-1 px-3 py-2 text-xs font-mono bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                         <button
                           type="button"
-                          onClick={handlePickLocalFolder}
-                          className="px-3 py-2 bg-slate-200 dark:bg-zinc-700 hover:bg-slate-300 dark:hover:bg-zinc-600 text-slate-700 dark:text-zinc-200 rounded-xl text-xs font-semibold shrink-0 transition-colors flex items-center gap-1.5"
+                          onClick={handlePickLocalFolderForNewWs}
+                          className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-semibold shrink-0 transition-colors flex items-center gap-1.5"
                         >
                           <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
-                          <span>选择目录</span>
+                          <span>选择本地文件夹</span>
                         </button>
                       </div>
+                    </div>
+
+                    {/* Expandable Advanced Sub-paths for New Workspace */}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedWsPaths(!showAdvancedWsPaths)}
+                        className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 mb-2"
+                      >
+                        <Sliders className="w-3 h-3" />
+                        <span>{showAdvancedWsPaths ? '收起自定义子路径配置' : '展开自定义笔记/附件/备份子目录'}</span>
+                      </button>
+
+                      {showAdvancedWsPaths && (
+                        <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-700 space-y-2 text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium">📁 笔记正文子目录 (Notes):</span>
+                            <input
+                              type="text"
+                              value={newWsNotesPath}
+                              onChange={(e) => setNewWsNotesPath(e.target.value)}
+                              placeholder="默认: [工作区路径]/Notes"
+                              className="w-full mt-0.5 px-2.5 py-1.5 text-[11px] font-mono bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium">🖼️ 附件媒体子目录 (.src / Assets):</span>
+                            <input
+                              type="text"
+                              value={newWsMediaPath}
+                              onChange={(e) => setNewWsMediaPath(e.target.value)}
+                              placeholder="默认: [工作区路径]/.src"
+                              className="w-full mt-0.5 px-2.5 py-1.5 text-[11px] font-mono bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 font-medium">📦 归档备份子目录 (Backups):</span>
+                            <input
+                              type="text"
+                              value={newWsBackupPath}
+                              onChange={(e) => setNewWsBackupPath(e.target.value)}
+                              placeholder="默认: [工作区路径]/Backups"
+                              className="w-full mt-0.5 px-2.5 py-1.5 text-[11px] font-mono bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -871,13 +1180,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         type="text"
                         value={newWsDesc}
                         onChange={(e) => setNewWsDesc(e.target.value)}
-                        placeholder="例如: 专门存储项目架构与思路日记"
+                        placeholder="例如: 专门存储项目架构设计与思路日记"
                         className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-2">
+                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-zinc-700">
                     <button
                       type="button"
                       onClick={() => setIsAddingWs(false)}
@@ -890,7 +1199,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={handleCreateWorkspace}
                       className="px-4 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-2xs transition-colors"
                     >
-                      保存并切换
+                      保存并立即切换
                     </button>
                   </div>
                 </div>
@@ -929,36 +1238,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 {ws.name}
                               </span>
                               {isActive && (
-                                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-md">
-                                  当前使用中
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-600 text-white">
+                                  当前活跃
                                 </span>
                               )}
+                              <span className="text-[11px] text-slate-400 dark:text-zinc-500">
+                                ({wsNotesCount} 篇笔记)
+                              </span>
                             </div>
+
                             <p className="text-[11px] font-mono text-slate-400 dark:text-zinc-500 truncate mt-0.5">
-                              {ws.path}
+                              根目录: {ws.path}
                             </p>
-                            {ws.description && (
-                              <p className="text-[11px] text-slate-500 dark:text-zinc-400 truncate mt-0.5">
-                                {ws.description}
-                              </p>
-                            )}
+                            <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-zinc-500 mt-1">
+                              <span>📁 笔记: {ws.notesPath || `${ws.path}/Notes`}</span>
+                              <span>🖼️ 附件: {ws.mediaPath || `${ws.path}/.src`}</span>
+                              <span>📦 备份: {ws.backupPath || `${ws.path}/Backups`}</span>
+                            </div>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs font-mono font-semibold text-slate-500 bg-slate-100 dark:bg-zinc-800 px-2 py-1 rounded-lg">
-                            {wsNotesCount} 条笔记
-                          </span>
-
                           {!isActive ? (
                             <button
                               type="button"
                               onClick={() => {
-                                onUpdateSettings({ ...settings, activeWorkspaceId: ws.id });
+                                onUpdateSettings({
+                                  ...settings,
+                                  activeWorkspaceId: ws.id,
+                                  storagePath: ws.notesPath || `${ws.path}/Notes`,
+                                  mediaStoragePath: ws.mediaPath || `${ws.path}/.src`,
+                                  backupPath: ws.backupPath || `${ws.path}/Backups`,
+                                });
                                 if (onSwitchWorkspace) onSwitchWorkspace(ws.id);
-                                onShowToast(`已成功切换至工作区: ${ws.name}`, 'success');
+                                onShowToast(`已切换至工作区: ${ws.name}`, 'success');
                               }}
-                              className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 rounded-xl transition-colors"
+                              className="px-3 py-1.5 text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl transition-colors"
                             >
                               切换
                             </button>
@@ -1096,84 +1411,184 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               )}
             </div>
           )}
+          {/* TAB: Paths & Storage Configuration */}
           {activeTab === 'paths' && (
             <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200/60 dark:border-zinc-800 space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1 flex items-center gap-1">
-                    <Folder className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>默认笔记保存目录 (Notes Storage)</span>
-                  </label>
-                  <div className="flex gap-2">
+              {/* Primary Working Root Card */}
+              <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-100">
+                      电脑本地工作主路径 ({activeWorkspace.name})
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-full">
+                    本地电脑文件夹联动
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-zinc-300 leading-relaxed">
+                  点击下方按钮选择您电脑上的任意本地文件夹。系统将以此目录为基准，自动联动生成并修改<strong>笔记正文目录 (Notes)</strong>、<strong>媒体附件目录 (.src)</strong> 与 <strong>全量备份目录 (Backups)</strong>。
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={rootWorkingFolder}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setRootWorkingFolder(val);
+                      if (val.trim()) {
+                        const derived = deriveSubPaths(val.trim());
+                        setStoragePath(derived.notesPath);
+                        setMediaStoragePath(derived.mediaPath);
+                        setBackupPath(derived.backupPath);
+                      }
+                    }}
+                    placeholder="~/Documents/FloveNote"
+                    className="flex-1 px-3 py-2 text-xs font-mono bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePickRootWorkingFolder}
+                    className="px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-2xs transition-colors flex items-center justify-center gap-1.5 shrink-0 active:scale-98"
+                  >
+                    <FolderOpen className="w-3.5 h-3.5" />
+                    <span>选择电脑本地文件夹</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sub-paths Detailed Customization */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200/60 dark:border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between pb-1 border-b border-slate-200/60 dark:border-zinc-700/60">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>子路径明细与独立修改</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-400 dark:text-zinc-500">
+                    可单独自定义三项目录名称与存储位置
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Notes Path */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Folder className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>1. 笔记正文工作目录 (Notes Storage)</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">存为 .md 原生 Markdown 文件</span>
+                    </label>
                     <input
                       type="text"
                       value={storagePath}
                       onChange={(e) => setStoragePath(e.target.value)}
                       placeholder="例如: ~/Documents/FloveNote/Notes"
-                      className="flex-1 px-3 py-1.5 text-xs font-mono bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newPath = prompt('请输入新的默认笔记保存目录路径：', storagePath);
-                        if (newPath && newPath.trim()) setStoragePath(newPath.trim());
-                      }}
-                      className="px-2.5 py-1.5 text-xs font-medium text-slate-700 dark:text-zinc-200 bg-slate-200/70 dark:bg-zinc-700 hover:bg-slate-300 rounded-lg transition-colors flex items-center gap-1 shrink-0"
-                    >
-                      <FolderOpen className="w-3.5 h-3.5" />
-                      <span>更改</span>
-                    </button>
+                  </div>
+
+                  {/* Media / Assets Path */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Folder className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>2. 媒体附件存储目录 (.src / Assets)</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">存放笔记中粘贴上传的本地图片与资源</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={mediaStoragePath}
+                      onChange={(e) => setMediaStoragePath(e.target.value)}
+                      placeholder="例如: ~/Documents/FloveNote/.src"
+                      className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  {/* Backups Path */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Folder className="w-3.5 h-3.5 text-amber-500" />
+                        <span>3. 归档备份存放路径 (Backups & Snapshots)</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">存放完整全量 JSON 备份与版本快照</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={backupPath}
+                      onChange={(e) => setBackupPath(e.target.value)}
+                      placeholder="例如: ~/Documents/FloveNote/Backups"
+                      className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1 flex items-center gap-1">
-                    <Folder className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>媒体附件存储目录 (Assets Path)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={mediaStoragePath}
-                    onChange={(e) => setMediaStoragePath(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1 flex items-center gap-1">
-                    <Folder className="w-3.5 h-3.5 text-amber-500" />
-                    <span>归档备份存放路径 (Backup Path)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={backupPath}
-                    onChange={(e) => setBackupPath(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs font-mono bg-white dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-slate-800 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-slate-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+                <div className="pt-3 border-t border-slate-200/60 dark:border-zinc-700/60 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={handleResetPaths}
-                    className="text-xs text-slate-500 hover:text-slate-800 underline"
+                    className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-zinc-200 underline"
                   >
-                    重置为系统默认路径
+                    重置为系统规范路径 (~/Documents/FloveNote)
                   </button>
                   <button
                     type="button"
                     onClick={handleSavePaths}
-                    className="px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-2xs transition-colors"
+                    className="px-4 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-2xs transition-colors"
                   >
                     保存路径配置
                   </button>
                 </div>
               </div>
 
-              {/* Backup & Restore Data */}
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200/60 dark:border-zinc-800 space-y-3">
-                <p className="font-semibold text-slate-800 dark:text-zinc-200">全量 JSON 数据备份与还原</p>
-                <p className="text-xs text-slate-400 dark:text-zinc-500">直接导出全量 JSON 或从已有 JSON 文件恢复笔记</p>
+              {/* Real Local Sync & Import Actions */}
+              <div className="p-4 rounded-2xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-xs text-slate-800 dark:text-zinc-100 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>本地文件夹即时写入与双向同步</span>
+                  </p>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    支持直接写入本地磁盘
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
+                  可以直接将当前工作区所有笔记导出并写入所选的本地电脑文件夹（自动归类生成 <code>Notes/</code>、<code>.src/</code> 与 <code>Backups/</code>），或从该文件夹扫描载入现有 Markdown 笔记。
+                </p>
+
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    disabled={isSyncing}
+                    onClick={handleSyncToLocalFolder}
+                    className="px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl shadow-2xs transition-colors flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>{isSyncing ? '正在写入本地文件夹...' : '⚡ 立即写入/同步至本地文件夹'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isImportingFromDir}
+                    onClick={handleImportFromLocalFolder}
+                    className="px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-200 bg-white dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700 border border-slate-200 dark:border-zinc-700 rounded-xl transition-colors flex items-center gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>{isImportingFromDir ? '正在读取本地笔记...' : '📥 从本地文件夹扫描导入笔记'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Full JSON Backup & Restore Data */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-200/60 dark:border-zinc-800 space-y-3">
+                <p className="font-semibold text-xs text-slate-800 dark:text-zinc-200">全量 JSON 数据备份与还原</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-500">直接导出全量 JSON 或从已有 JSON 文件恢复所有笔记与标签</p>
 
                 <div className="flex items-center gap-3 pt-1">
                   {onExportBackup && (
@@ -1198,10 +1613,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* Sample Data Reset */}
-              <div className="p-4 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 flex items-center justify-between">
+              <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 flex items-center justify-between">
                 <div>
-                  <p className="font-semibold text-slate-800 dark:text-zinc-200">恢复系统初始示例数据</p>
-                  <p className="text-xs text-slate-400 dark:text-zinc-500">重置笔记库为初始示例精选集</p>
+                  <p className="font-semibold text-xs text-slate-800 dark:text-zinc-200">恢复系统初始示例数据</p>
+                  <p className="text-xs text-slate-400 dark:text-zinc-500">重置笔记库为初始精选示例集</p>
                 </div>
                 <button
                   type="button"
