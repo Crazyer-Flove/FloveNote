@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+}
+
+/* Fix KaTeX duplicate rendering by hiding mathml node while showing formatted katex-html */
+.katex-mathml {
+  display: none !important;
+}
+
+/* Smooth KaTeX font alignment */
+.katex {
+  font-size: 1.1em;
+  line-height: 1.2;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.7);
+}
+
+/* Hide scrollbars for toolbars and clean display containers */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Printable PDF & A4 Paper Export Styling */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide all UI elements outside of the note export card modal */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Reveal only the export card element and its child elements */
+  #note-export-card-print,
+  #note-export-card-print * {
+    visibility: visible !important;
+  }
+
+  /* Center the note card on A4 page layout */
+  #note-export-card-print {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: 100% !important;
+    max-width: 680px !important;
+    margin: 0 auto !important;
+    padding: 32px !important;
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 16px !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Adjust typography & font sizes to fit paper ratio comfortably */
+  #note-export-card-print {
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+  }
+
+  #note-export-card-print h1 {
+    font-size: 18pt !important;
+    line-height: 1.3 !important;
+    margin-bottom: 8pt !important;
+    font-weight: 700 !important;
+  }
+
+  #note-export-card-print h2 {
+    font-size: 15pt !important;
+    line-height: 1.35 !important;
+    margin-bottom: 6pt !important;
+    font-weight: 700 !important;
+  }
+
+  #note-export-card-print h3 {
+    font-size: 13pt !important;
+    line-height: 1.4 !important;
+    margin-bottom: 4pt !important;
+    font-weight: 600 !important;
+  }
+
+  #note-export-card-print p,
+  #note-export-card-print li {
+    font-size: 11pt !important;
+    line-height: 1.6 !important;
+  }
+
+  #note-export-card-print code,
+  #note-export-card-print pre {
+    font-size: 9.5pt !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  }
+}

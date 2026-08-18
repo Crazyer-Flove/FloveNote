@@ -1,0 +1,6 @@
+{
+  "name": "FloveNote",
+  "description": "极简简约风格的时间轴 Markdown 笔记工具",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
